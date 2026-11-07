@@ -1,30 +1,34 @@
 
-import { Route, Routes, Navigate } from "react-router-dom";
-import { useState } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
 
-import UserContext from "./context/userContext";
 import AdminPage from "./pages/adminPage";
+import RegisterPage from "./pages/registerPage";
+import LoginPage from "./pages/loginPage";
+import ReceptionistPage from "./pages/receptionistPage";
+import DoctorPage from "./pages/doctorPage";
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [userLoadingFinished, setUserLoadingFinished] = useState(false);
-
   return (
-    <UserContext
-      value={{
-        user: user,
-        setUser: setUser,
-        userLoadingFinished: userLoadingFinished,
-        setUserLoadingFinished: setUserLoadingFinished,
-      }}
-    >
-      <div className="w-full min-h-screen bg-gray-50">
-        <Routes>
-          <Route path="/" element={<Navigate to="/admin" />} />
-          <Route path="/admin/*" element={<AdminPage />} />
-        </Routes>
-      </div>
-    </UserContext>
+    <>
+      <Toaster position="top-right" />
+
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+
+        <Route path="/login" element={<LoginPage />} />
+
+        <Route path="/register" element={<RegisterPage />} />
+
+        <Route path="/admin/*" element={<AdminPage />} />
+
+        <Route path="/receptionist/*" element={<ReceptionistPage />} />
+
+        <Route path="/doctor/*" element={<DoctorPage />} />
+
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </>
   );
 }
 

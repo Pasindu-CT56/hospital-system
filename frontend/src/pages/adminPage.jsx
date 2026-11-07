@@ -1,16 +1,59 @@
 
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Route, Routes, Navigate, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
   Stethoscope,
   CalendarDays,
   FileText,
+  LogOut,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 import Dashboard from "./dashboardPage.jsx";
 
 export default function AdminPage() {
+  const navigate = useNavigate();
+
+  // Get logged-in user
+  const token = localStorage.getItem("token");
+
+  let user = null;
+
+  try {
+    user = JSON.parse(localStorage.getItem("user"));
+  } catch {
+    user = null;
+  }
+
+  // Check authentication
+  if (!token || !user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Check admin role
+  if (user.role !== "ADMIN") {
+    if (user.role === "RECEPTIONIST") {
+      return <Navigate to="/receptionist" replace />;
+    }
+
+    if (user.role === "DOCTOR") {
+      return <Navigate to="/doctor" replace />;
+    }
+
+    return <Navigate to="/login" replace />;
+  }
+
+  // Logout
+  function handleLogout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+
+    toast.success("Logged out successfully");
+
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div className="flex min-h-screen w-full">
 
@@ -60,6 +103,17 @@ export default function AdminPage() {
           <FileText size={20} />
           Medical Records
         </Link>
+
+        {/* Logout Button */}
+        <div className="mt-auto border-t pt-5">
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg p-3 text-red-600 hover:bg-red-50"
+          >
+            <LogOut size={20} />
+            Logout
+          </button>
+        </div>
 
       </div>
 

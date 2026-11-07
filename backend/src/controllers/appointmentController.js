@@ -78,7 +78,19 @@ export async function createAppointment(req, res) {
 // Get All Appointments
 export async function getAllAppointments(req, res) {
   try {
+    const where =
+      req.user.role === "DOCTOR"
+        ? {
+            doctor: {
+              is: {
+                userId: req.user.id,
+              },
+            },
+          }
+        : {};
+
     const appointments = await prisma.appointment.findMany({
+      where,
       include: {
         patient: true,
         doctor: {
@@ -115,10 +127,22 @@ export async function getAppointmentById(req, res) {
   try {
     const { appointmentId } = req.params;
 
-    const appointment = await prisma.appointment.findUnique({
-      where: {
-        id: appointmentId,
-      },
+    const where =
+      req.user.role === "DOCTOR"
+        ? {
+            id: appointmentId,
+            doctor: {
+              is: {
+                userId: req.user.id,
+              },
+            },
+          }
+        : {
+            id: appointmentId,
+          };
+
+    const appointment = await prisma.appointment.findFirst({
+      where,
       include: {
         patient: true,
         doctor: {
