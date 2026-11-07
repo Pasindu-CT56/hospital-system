@@ -90,10 +90,19 @@ export async function createInvoice(req, res) {
         totalAmount: total.toFixed(2),
         paidAmount: paid.toFixed(2),
         status,
+        payments:
+          paid > 0
+            ? {
+                create: {
+                  amount: paid.toFixed(2),
+                },
+              }
+            : undefined,
       },
       include: {
         patient: true,
         appointment: true,
+        payments: true,
       },
     });
 
@@ -117,6 +126,11 @@ export async function getAllInvoices(req, res) {
       include: {
         patient: true,
         appointment: true,
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -146,6 +160,11 @@ export async function getInvoiceById(req, res) {
       include: {
         patient: true,
         appointment: true,
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
     });
 
@@ -175,6 +194,11 @@ export async function getInvoicesByPatient(req, res) {
       include: {
         patient: true,
         appointment: true,
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -214,41 +238,57 @@ export async function addInvoicePayment(req, res) {
       });
     }
 
-    const invoice = await prisma.invoice.findUnique({
-      where: { id: invoiceId },
-    });
-
-    if (!invoice) {
-      return res.status(404).json({
-        message: "Invoice not found",
+    const updatedInvoice = await prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findUnique({
+        where: { id: invoiceId },
       });
-    }
 
-    const total = Number(invoice.totalAmount);
-    const currentPaid = Number(invoice.paidAmount);
-    const newPaid = currentPaid + paymentAmount;
+      if (!invoice) {
+        const error = new Error("Invoice not found");
+        error.statusCode = 404;
+        throw error;
+      }
 
-    if (newPaid > total) {
-      return res.status(400).json({
-        message: "Payment exceeds the remaining invoice balance",
+      const total = Number(invoice.totalAmount);
+      const currentPaid = Number(invoice.paidAmount);
+      const newPaid = currentPaid + paymentAmount;
+
+      if (newPaid > total) {
+        const error = new Error(
+          "Payment exceeds the remaining invoice balance"
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const status =
+        newPaid === total
+          ? "PAID"
+          : "PARTIALLY_PAID";
+
+      await tx.payment.create({
+        data: {
+          invoiceId,
+          amount: paymentAmount.toFixed(2),
+        },
       });
-    }
 
-    const status =
-      newPaid === total
-        ? "PAID"
-        : "PARTIALLY_PAID";
-
-    const updatedInvoice = await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: {
-        paidAmount: newPaid.toFixed(2),
-        status,
-      },
-      include: {
-        patient: true,
-        appointment: true,
-      },
+      return await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          paidAmount: newPaid.toFixed(2),
+          status,
+        },
+        include: {
+          patient: true,
+          appointment: true,
+          payments: {
+            orderBy: {
+              createdAt: "desc",
+            },
+          },
+        },
+      });
     });
 
     return res.status(200).json({
@@ -257,6 +297,46 @@ export async function addInvoicePayment(req, res) {
     });
   } catch (error) {
     console.error("Add invoice payment error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      message: error.message || "Internal server error",
+    });
+  }
+}
+
+// GET PAYMENT HISTORY
+export async function getInvoicePayments(req, res) {
+  try {
+    const { invoiceId } = req.params;
+
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      return res.status(404).json({
+        message: "Invoice not found",
+      });
+    }
+
+    return res.status(200).json({
+      invoiceId: invoice.id,
+      totalAmount: invoice.totalAmount,
+      paidAmount: invoice.paidAmount,
+      remainingAmount:
+        Number(invoice.totalAmount) - Number(invoice.paidAmount),
+      paymentCount: invoice.payments.length,
+      payments: invoice.payments,
+    });
+  } catch (error) {
+    console.error("Get invoice payments error:", error);
 
     return res.status(500).json({
       message: "Internal server error",

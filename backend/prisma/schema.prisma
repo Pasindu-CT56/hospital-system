@@ -123,4 +123,15 @@ model Invoice {
 
   patient     Patient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  payments Payment[]
+}
+
+model Payment {
+  id        String   @id @default(uuid()) @db.Uuid
+  invoiceId String   @db.Uuid
+  amount    Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
 }

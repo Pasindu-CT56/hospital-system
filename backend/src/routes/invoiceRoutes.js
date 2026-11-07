@@ -7,6 +7,7 @@ import {
   getInvoiceById,
   getInvoicesByPatient,
   addInvoicePayment,
+  getInvoicePayments,
 } from "../controllers/invoiceController.js";
 
 import {
@@ -36,6 +37,14 @@ invoiceRouter.get(
   verifyToken,
   checkRole("ADMIN", "RECEPTIONIST"),
   getInvoicesByPatient
+);
+
+// GET PAYMENT HISTORY
+invoiceRouter.get(
+  "/:invoiceId/payments",
+  verifyToken,
+  checkRole("ADMIN", "RECEPTIONIST"),
+  getInvoicePayments
 );
 
 invoiceRouter.get(
