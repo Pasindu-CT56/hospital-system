@@ -22,6 +22,12 @@ enum AppointmentStatus {
   CANCELLED
 }
 
+enum InvoiceStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   firstName    String
@@ -63,6 +69,7 @@ model Patient {
 
   appointments Appointment[]
   medicalRecords MedicalRecord[]
+  invoices Invoice[]
 }
 
 model Appointment {
@@ -79,6 +86,7 @@ model Appointment {
   doctor  Doctor  @relation(fields: [doctorId], references: [id], onDelete: Restrict)
 
   medicalRecord MedicalRecord?
+  invoice Invoice?
 }
 
 model MedicalRecord {
@@ -99,4 +107,20 @@ model MedicalRecord {
   patient     Patient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
   doctor      Doctor      @relation(fields: [doctorId], references: [id], onDelete: Restrict)
   appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+}
+
+model Invoice {
+  id            String        @id @default(uuid()) @db.Uuid
+  patientId     String        @db.Uuid
+  appointmentId String        @unique @db.Uuid
+
+  totalAmount   Decimal       @db.Decimal(10, 2)
+  paidAmount    Decimal       @default(0) @db.Decimal(10, 2)
+  status        InvoiceStatus @default(PENDING)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  patient     Patient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
 }

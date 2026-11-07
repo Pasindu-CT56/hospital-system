@@ -1,3 +1,4 @@
+
 import prisma from "../lib/prisma.js";
 
 // CREATE MEDICAL RECORD
@@ -13,7 +14,12 @@ export async function createMedicalRecord(req, res) {
       recordDate,
     } = req.body;
 
-    if (!patientId || !diagnosis?.trim()) {
+    // Validate required fields
+    if (
+      !patientId ||
+      typeof diagnosis !== "string" ||
+      !diagnosis.trim()
+    ) {
       return res.status(400).json({
         message: "Patient ID and diagnosis are required",
       });
@@ -65,6 +71,14 @@ export async function createMedicalRecord(req, res) {
         });
       }
 
+      // Prevent records for cancelled appointments
+      if (appointment.status === "CANCELLED") {
+        return res.status(400).json({
+          message: "Cannot create a medical record for a cancelled appointment",
+        });
+      }
+
+      // Check for an existing medical record
       const existingRecord = await prisma.medicalRecord.findUnique({
         where: { appointmentId },
       });
@@ -76,6 +90,7 @@ export async function createMedicalRecord(req, res) {
       }
     }
 
+    // Validate record date
     let parsedRecordDate;
 
     if (recordDate) {
@@ -84,6 +99,12 @@ export async function createMedicalRecord(req, res) {
       if (Number.isNaN(parsedRecordDate.getTime())) {
         return res.status(400).json({
           message: "Invalid record date",
+        });
+      }
+
+      if (parsedRecordDate > new Date()) {
+        return res.status(400).json({
+          message: "Record date cannot be in the future",
         });
       }
     }
@@ -97,7 +118,9 @@ export async function createMedicalRecord(req, res) {
         treatment: treatment || null,
         prescription: prescription || null,
         notes: notes || null,
-        ...(parsedRecordDate && { recordDate: parsedRecordDate }),
+        ...(parsedRecordDate && {
+          recordDate: parsedRecordDate,
+        }),
       },
       include: {
         patient: true,
@@ -122,6 +145,7 @@ export async function createMedicalRecord(req, res) {
     });
   } catch (error) {
     console.error("Create medical record error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -174,6 +198,7 @@ export async function getAllMedicalRecords(req, res) {
     });
   } catch (error) {
     console.error("Get medical records error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -222,6 +247,7 @@ export async function getMedicalRecordById(req, res) {
     return res.status(200).json({ medicalRecord });
   } catch (error) {
     console.error("Get medical record error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -275,6 +301,7 @@ export async function getMedicalRecordsByPatient(req, res) {
     });
   } catch (error) {
     console.error("Get patient medical records error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -298,7 +325,10 @@ export async function updateMedicalRecord(req, res) {
       });
     }
 
-    if (diagnosis !== undefined && !diagnosis.trim()) {
+    if (
+      diagnosis !== undefined &&
+      (typeof diagnosis !== "string" || !diagnosis.trim())
+    ) {
       return res.status(400).json({
         message: "Diagnosis cannot be empty",
       });
@@ -354,6 +384,7 @@ export async function updateMedicalRecord(req, res) {
     });
   } catch (error) {
     console.error("Update medical record error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });

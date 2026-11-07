@@ -8,6 +8,7 @@ import patientRouter from "./routes/patientRoutes.js";
 import doctorRouter from "./routes/doctorRoutes.js";
 import appointmentRouter from "./routes/appointmentRoutes.js";
 import medicalRecordRouter from "./routes/medicalRecordRoutes.js";
+import invoiceRouter from "./routes/invoiceRoutes.js";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use("/api/patients", patientRouter);
 app.use("/api/doctors", doctorRouter);
 app.use("/api/appointments", appointmentRouter);
 app.use("/api/medical-records", medicalRecordRouter);
+app.use("/api/invoices", invoiceRouter);
 
 const PORT = process.env.PORT || 5000;
 

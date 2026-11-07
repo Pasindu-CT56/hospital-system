@@ -1,8 +1,9 @@
+
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-// User Registration
+// USER REGISTRATION
 export async function register(req, res) {
   try {
     const { firstName, lastName, email, password } = req.body;
@@ -66,7 +67,7 @@ export async function register(req, res) {
   }
 }
 
-// User Login
+// USER LOGIN
 export async function login(req, res) {
   try {
     const { email, password } = req.body;
@@ -75,6 +76,13 @@ export async function login(req, res) {
     if (!email || !password) {
       return res.status(400).json({
         message: "Email and password are required",
+      });
+    }
+
+    // Check JWT secret
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        message: "JWT configuration error",
       });
     }
 
@@ -130,7 +138,6 @@ export async function login(req, res) {
         role: user.role,
       },
     });
-
   } catch (error) {
     console.error("Login error:", error);
 
