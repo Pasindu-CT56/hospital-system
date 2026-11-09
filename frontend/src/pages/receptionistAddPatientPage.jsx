@@ -4,6 +4,15 @@ import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../lib/api";
 
+function getTodayDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function ReceptionistAddPatientPage() {
   const navigate = useNavigate();
 
@@ -21,6 +30,11 @@ export default function ReceptionistAddPatientPage() {
 
     if (!firstName.trim() || !lastName.trim()) {
       toast.error("First name and last name are required");
+      return;
+    }
+
+    if (dateOfBirth && dateOfBirth > getTodayDate()) {
+      toast.error("Date of birth cannot be in the future");
       return;
     }
 
@@ -62,7 +76,6 @@ export default function ReceptionistAddPatientPage() {
 
   return (
     <div>
-      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-blue-900">
           Add Patient
@@ -73,11 +86,8 @@ export default function ReceptionistAddPatientPage() {
         </p>
       </div>
 
-      {/* Form */}
       <div className="max-w-3xl rounded-lg bg-white p-6 shadow-sm">
         <form onSubmit={handleSubmit}>
-
-          {/* First Name and Last Name */}
           <div className="mb-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -110,7 +120,6 @@ export default function ReceptionistAddPatientPage() {
             </div>
           </div>
 
-          {/* Date of Birth */}
           <div className="mb-5">
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Date of Birth
@@ -120,11 +129,11 @@ export default function ReceptionistAddPatientPage() {
               type="date"
               value={dateOfBirth}
               onChange={(e) => setDateOfBirth(e.target.value)}
+              max={getTodayDate()}
               className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-blue-500"
             />
           </div>
 
-          {/* Phone and Email */}
           <div className="mb-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -155,7 +164,6 @@ export default function ReceptionistAddPatientPage() {
             </div>
           </div>
 
-          {/* Address */}
           <div className="mb-6">
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Address
@@ -170,7 +178,6 @@ export default function ReceptionistAddPatientPage() {
             />
           </div>
 
-          {/* Buttons */}
           <div className="flex flex-wrap gap-3">
             <button
               type="submit"
@@ -189,7 +196,6 @@ export default function ReceptionistAddPatientPage() {
               Cancel
             </button>
           </div>
-
         </form>
       </div>
     </div>

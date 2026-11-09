@@ -1,13 +1,11 @@
-
 import { useEffect, useState } from "react";
 
 import {
-  Link,
+  NavLink,
   Navigate,
   useNavigate,
   Routes,
   Route,
-  useLocation,
 } from "react-router-dom";
 
 import {
@@ -26,7 +24,6 @@ import DoctorAddMedicalRecordPage from "./doctorAddMedicalRecordPage";
 
 export default function DoctorPage() {
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [appointments, setAppointments] = useState([]);
   const [medicalRecords, setMedicalRecords] = useState([]);
@@ -42,42 +39,22 @@ export default function DoctorPage() {
     user = null;
   }
 
-  // Check authentication
-  if (!token || !user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // Check doctor role
-  if (user.role !== "DOCTOR") {
-    if (user.role === "ADMIN") {
-      return <Navigate to="/admin" replace />;
-    }
-
-    if (user.role === "RECEPTIONIST") {
-      return <Navigate to="/receptionist" replace />;
-    }
-
-    return <Navigate to="/login" replace />;
-  }
-
-  // Fetch dashboard data
   useEffect(() => {
     async function fetchDashboardData() {
-      try {
-        const [appointmentRes, medicalRecordRes] =
-          await Promise.all([
-            api.get("/appointments", {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }),
+      if (!token || !user || user.role !== "DOCTOR") {
+        setIsLoading(false);
+        return;
+      }
 
-            api.get("/medical-records", {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }),
-          ]);
+      try {
+        const headers = {
+          Authorization: `Bearer ${token}`,
+        };
+
+        const [appointmentRes, medicalRecordRes] = await Promise.all([
+          api.get("/appointments", { headers }),
+          api.get("/medical-records", { headers }),
+        ]);
 
         setAppointments(
           appointmentRes.data.appointments || []
@@ -90,7 +67,8 @@ export default function DoctorPage() {
         console.log("Dashboard data error:", error);
 
         toast.error(
-          "Failed to load dashboard statistics"
+          error.response?.data?.message ||
+            "Failed to load dashboard statistics"
         );
       } finally {
         setIsLoading(false);
@@ -98,14 +76,28 @@ export default function DoctorPage() {
     }
 
     fetchDashboardData();
-  }, [token]);
+  }, [token, user?.role]);
 
-  // Calculate statistics
+  if (!token || !user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== "DOCTOR") {
+    if (user.role === "ADMIN") {
+      return <Navigate to="/admin" replace />;
+    }
+
+    if (user.role === "RECEPTIONIST") {
+      return <Navigate to="/receptionist" replace />;
+    }
+
+    return <Navigate to="/login" replace />;
+  }
+
   const completedAppointments = appointments.filter(
     (appointment) => appointment.status === "COMPLETED"
   ).length;
 
-  // Logout
   function handleLogout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -114,75 +106,72 @@ export default function DoctorPage() {
     navigate("/login", { replace: true });
   }
 
+  const menuItems = [
+    {
+      title: "Dashboard",
+      path: "/doctor",
+      icon: LayoutDashboard,
+      end: true,
+    },
+    {
+      title: "Appointments",
+      path: "/doctor/appointments",
+      icon: CalendarDays,
+    },
+    {
+      title: "Medical Records",
+      path: "/doctor/medical-records",
+      icon: FileText,
+    },
+  ];
+
   return (
     <div className="flex min-h-screen w-full">
-
-      {/* Sidebar */}
-      <div className="flex w-64 flex-col border-r bg-white p-5">
-
+      <aside className="flex w-64 shrink-0 flex-col border-r bg-white p-5">
         <h1 className="mb-10 text-xl font-bold text-blue-900">
           Hospital MS
         </h1>
 
-        {/* Dashboard */}
-        <Link
-          to="/doctor"
-          className={`mb-3 flex items-center gap-3 rounded-lg p-3 ${
-            location.pathname === "/doctor"
-              ? "bg-blue-600 text-white"
-              : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          <LayoutDashboard size={20} />
-          Dashboard
-        </Link>
+        <nav className="flex-1 space-y-2">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
 
-        {/* Appointments */}
-        <Link
-          to="/doctor/appointments"
-          className={`mb-3 flex items-center gap-3 rounded-lg p-3 ${
-            location.pathname === "/doctor/appointments"
-              ? "bg-blue-600 text-white"
-              : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          <CalendarDays size={20} />
-          Appointments
-        </Link>
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium ${
+                    isActive
+                      ? "bg-blue-100 text-blue-900"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`
+                }
+              >
+                <Icon size={20} />
+                {item.title}
+              </NavLink>
+            );
+          })}
+        </nav>
 
-        {/* Medical Records */}
-        <Link
-          to="/doctor/medical-records"
-          className={`mb-3 flex items-center gap-3 rounded-lg p-3 ${
-            location.pathname.startsWith("/doctor/medical-records") ||
-            location.pathname === "/doctor/add-medical-record"
-              ? "bg-blue-600 text-white"
-              : "text-gray-600 hover:bg-gray-100"
-          }`}
-        >
-          <FileText size={20} />
-          Medical Records
-        </Link>
-
-        {/* Logout */}
-        <div className="mt-auto border-t pt-5">
+        <div className="mt-6 border-t pt-5">
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg p-3 text-red-600 hover:bg-red-50"
+            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
           >
             <LogOut size={20} />
             Logout
           </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 bg-gray-50 p-8">
-
+      <main className="min-w-0 flex-1 bg-gray-50 p-8">
         <Routes>
-          {/* Dashboard */}
+          {/* Doctor Dashboard */}
           <Route
-            path="/"
+            index
             element={
               <div>
                 <h1 className="text-2xl font-bold text-blue-900">
@@ -193,9 +182,8 @@ export default function DoctorPage() {
                   Welcome, {user.firstName} {user.lastName}.
                 </p>
 
-                {/* Statistics */}
                 <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
-
+                  {/* Total Appointments */}
                   <div className="rounded-xl bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
@@ -214,6 +202,7 @@ export default function DoctorPage() {
                     </div>
                   </div>
 
+                  {/* Completed Appointments */}
                   <div className="rounded-xl bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
@@ -232,6 +221,7 @@ export default function DoctorPage() {
                     </div>
                   </div>
 
+                  {/* Medical Records */}
                   <div className="rounded-xl bg-white p-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div>
@@ -249,7 +239,6 @@ export default function DoctorPage() {
                       </div>
                     </div>
                   </div>
-
                 </div>
               </div>
             }
@@ -257,24 +246,29 @@ export default function DoctorPage() {
 
           {/* Appointments */}
           <Route
-            path="/appointments"
+            path="appointments"
             element={<DoctorAppointmentsPage />}
           />
 
           {/* Medical Records */}
           <Route
-            path="/medical-records"
+            path="medical-records"
             element={<DoctorMedicalRecordsPage />}
           />
 
           {/* Add Medical Record */}
           <Route
-            path="/add-medical-record"
+            path="add-medical-record"
             element={<DoctorAddMedicalRecordPage />}
           />
 
+          {/* Invalid Routes */}
+          <Route
+            path="*"
+            element={<Navigate to="/doctor" replace />}
+          />
         </Routes>
-      </div>
+      </main>
     </div>
   );
 }

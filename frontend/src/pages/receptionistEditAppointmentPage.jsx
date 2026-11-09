@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -21,6 +20,21 @@ export default function ReceptionistEditAppointmentPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const token = localStorage.getItem("token");
+
+  // Convert UTC date to local datetime-local format
+  function formatLocalDateTime(dateValue) {
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    const localDate = new Date(
+      date.getTime() - date.getTimezoneOffset() * 60000
+    );
+
+    return localDate.toISOString().slice(0, 16);
+  }
 
   useEffect(() => {
     async function fetchData() {
@@ -63,9 +77,7 @@ export default function ReceptionistEditAppointmentPage() {
 
         setAppointmentDate(
           appointment.appointmentDate
-            ? new Date(appointment.appointmentDate)
-                .toISOString()
-                .slice(0, 16)
+            ? formatLocalDateTime(appointment.appointmentDate)
             : ""
         );
 

@@ -1,5 +1,30 @@
-
 import prisma from "../lib/prisma.js";
+
+// Validate UUID
+function isValidUUID(id) {
+  return (
+    typeof id === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      id
+    )
+  );
+}
+
+// Validate optional text fields
+function validateOptionalText(value) {
+  if (value === undefined || value === null) {
+    return { valid: true, value: value ?? null };
+  }
+
+  if (typeof value !== "string") {
+    return { valid: false };
+  }
+
+  return {
+    valid: true,
+    value: value.trim() || null,
+  };
+}
 
 // CREATE MEDICAL RECORD
 export async function createMedicalRecord(req, res) {
@@ -22,6 +47,34 @@ export async function createMedicalRecord(req, res) {
     ) {
       return res.status(400).json({
         message: "Patient ID and diagnosis are required",
+      });
+    }
+
+    // Validate IDs
+    if (!isValidUUID(patientId)) {
+      return res.status(400).json({
+        message: "Invalid patient ID",
+      });
+    }
+
+    if (appointmentId && !isValidUUID(appointmentId)) {
+      return res.status(400).json({
+        message: "Invalid appointment ID",
+      });
+    }
+
+    // Validate optional text fields
+    const treatmentData = validateOptionalText(treatment);
+    const prescriptionData = validateOptionalText(prescription);
+    const notesData = validateOptionalText(notes);
+
+    if (
+      !treatmentData.valid ||
+      !prescriptionData.valid ||
+      !notesData.valid
+    ) {
+      return res.status(400).json({
+        message: "Treatment, prescription and notes must be text values",
       });
     }
 
@@ -71,10 +124,10 @@ export async function createMedicalRecord(req, res) {
         });
       }
 
-      // Prevent records for cancelled appointments
       if (appointment.status === "CANCELLED") {
         return res.status(400).json({
-          message: "Cannot create a medical record for a cancelled appointment",
+          message:
+            "Cannot create a medical record for a cancelled appointment",
         });
       }
 
@@ -93,7 +146,13 @@ export async function createMedicalRecord(req, res) {
     // Validate record date
     let parsedRecordDate;
 
-    if (recordDate) {
+    if (recordDate !== undefined) {
+      if (typeof recordDate !== "string" || !recordDate.trim()) {
+        return res.status(400).json({
+          message: "Invalid record date",
+        });
+      }
+
       parsedRecordDate = new Date(recordDate);
 
       if (Number.isNaN(parsedRecordDate.getTime())) {
@@ -115,9 +174,9 @@ export async function createMedicalRecord(req, res) {
         doctorId: doctor.id,
         appointmentId: appointmentId || null,
         diagnosis: diagnosis.trim(),
-        treatment: treatment || null,
-        prescription: prescription || null,
-        notes: notes || null,
+        treatment: treatmentData.value,
+        prescription: prescriptionData.value,
+        notes: notesData.value,
         ...(parsedRecordDate && {
           recordDate: parsedRecordDate,
         }),
@@ -145,6 +204,13 @@ export async function createMedicalRecord(req, res) {
     });
   } catch (error) {
     console.error("Create medical record error:", error);
+
+    // Handle duplicate appointment record
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        message: "A medical record already exists for this appointment",
+      });
+    }
 
     return res.status(500).json({
       message: "Internal server error",
@@ -210,6 +276,12 @@ export async function getMedicalRecordById(req, res) {
   try {
     const { recordId } = req.params;
 
+    if (!isValidUUID(recordId)) {
+      return res.status(400).json({
+        message: "Invalid medical record ID",
+      });
+    }
+
     const where = {
       id: recordId,
       ...(req.user.role !== "ADMIN" && {
@@ -258,6 +330,12 @@ export async function getMedicalRecordById(req, res) {
 export async function getMedicalRecordsByPatient(req, res) {
   try {
     const { patientId } = req.params;
+
+    if (!isValidUUID(patientId)) {
+      return res.status(400).json({
+        message: "Invalid patient ID",
+      });
+    }
 
     const where = {
       patientId,
@@ -314,6 +392,13 @@ export async function updateMedicalRecord(req, res) {
     const { recordId } = req.params;
     const { diagnosis, treatment, prescription, notes } = req.body;
 
+    if (!isValidUUID(recordId)) {
+      return res.status(400).json({
+        message: "Invalid medical record ID",
+      });
+    }
+
+    // Check whether at least one field was provided
     if (
       diagnosis === undefined &&
       treatment === undefined &&
@@ -325,6 +410,7 @@ export async function updateMedicalRecord(req, res) {
       });
     }
 
+    // Validate diagnosis
     if (
       diagnosis !== undefined &&
       (typeof diagnosis !== "string" || !diagnosis.trim())
@@ -334,6 +420,22 @@ export async function updateMedicalRecord(req, res) {
       });
     }
 
+    // Validate optional text fields
+    const treatmentData = validateOptionalText(treatment);
+    const prescriptionData = validateOptionalText(prescription);
+    const notesData = validateOptionalText(notes);
+
+    if (
+      !treatmentData.valid ||
+      !prescriptionData.valid ||
+      !notesData.valid
+    ) {
+      return res.status(400).json({
+        message: "Treatment, prescription and notes must be text values",
+      });
+    }
+
+    // Find record and check doctor ownership
     const where = {
       id: recordId,
       ...(req.user.role !== "ADMIN" && {
@@ -359,9 +461,15 @@ export async function updateMedicalRecord(req, res) {
         ...(diagnosis !== undefined && {
           diagnosis: diagnosis.trim(),
         }),
-        ...(treatment !== undefined && { treatment }),
-        ...(prescription !== undefined && { prescription }),
-        ...(notes !== undefined && { notes }),
+        ...(treatment !== undefined && {
+          treatment: treatmentData.value,
+        }),
+        ...(prescription !== undefined && {
+          prescription: prescriptionData.value,
+        }),
+        ...(notes !== undefined && {
+          notes: notesData.value,
+        }),
       },
       include: {
         patient: true,
@@ -375,6 +483,7 @@ export async function updateMedicalRecord(req, res) {
             },
           },
         },
+        appointment: true,
       },
     });
 

@@ -1,4 +1,3 @@
-
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -9,9 +8,28 @@ export async function register(req, res) {
     const { firstName, lastName, email, password } = req.body;
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !password) {
+    if (
+      typeof firstName !== "string" ||
+      typeof lastName !== "string" ||
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !firstName.trim() ||
+      !lastName.trim() ||
+      !email.trim() ||
+      !password
+    ) {
       return res.status(400).json({
         message: "All fields are required",
+      });
+    }
+
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: "Please provide a valid email address",
       });
     }
 
@@ -23,7 +41,9 @@ export async function register(req, res) {
 
     // Check existing user
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: {
+        email: normalizedEmail,
+      },
     });
 
     if (existingUser) {
@@ -38,9 +58,9 @@ export async function register(req, res) {
     // Create user
     const newUser = await prisma.user.create({
       data: {
-        firstName,
-        lastName,
-        email,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        email: normalizedEmail,
         passwordHash,
         role: "RECEPTIONIST",
       },
@@ -61,6 +81,12 @@ export async function register(req, res) {
   } catch (error) {
     console.error("Registration error:", error);
 
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        message: "Email already exists",
+      });
+    }
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -73,13 +99,19 @@ export async function login(req, res) {
     const { email, password } = req.body;
 
     // Validate required fields
-    if (!email || !password) {
+    if (
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !email.trim() ||
+      !password
+    ) {
       return res.status(400).json({
         message: "Email and password are required",
       });
     }
 
-    // Check JWT secret
+    const normalizedEmail = email.trim().toLowerCase();
+
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({
         message: "JWT configuration error",
@@ -88,7 +120,9 @@ export async function login(req, res) {
 
     // Find user
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: {
+        email: normalizedEmail,
+      },
     });
 
     if (!user) {

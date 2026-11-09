@@ -4,6 +4,33 @@ import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../lib/api";
 
+function getTodayDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateForInput(dateValue) {
+  if (!dateValue) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(String(dateValue))) {
+    return String(dateValue).slice(0, 10);
+  }
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function ReceptionistEditPatientPage() {
   const navigate = useNavigate();
   const { patientId } = useParams();
@@ -33,13 +60,7 @@ export default function ReceptionistEditPatientPage() {
 
         setFirstName(patient.firstName || "");
         setLastName(patient.lastName || "");
-        setDateOfBirth(
-          patient.dateOfBirth
-            ? new Date(patient.dateOfBirth)
-                .toISOString()
-                .split("T")[0]
-            : ""
-        );
+        setDateOfBirth(formatDateForInput(patient.dateOfBirth));
         setPhone(patient.phone || "");
         setEmail(patient.email || "");
         setAddress(patient.address || "");
@@ -65,6 +86,11 @@ export default function ReceptionistEditPatientPage() {
 
     if (!firstName.trim() || !lastName.trim()) {
       toast.error("First name and last name are required");
+      return;
+    }
+
+    if (dateOfBirth && dateOfBirth > getTodayDate()) {
+      toast.error("Date of birth cannot be in the future");
       return;
     }
 
@@ -159,6 +185,7 @@ export default function ReceptionistEditPatientPage() {
               type="date"
               value={dateOfBirth}
               onChange={(e) => setDateOfBirth(e.target.value)}
+              max={getTodayDate()}
               className="w-full rounded-lg border border-gray-300 p-3 outline-none focus:border-blue-500"
             />
           </div>

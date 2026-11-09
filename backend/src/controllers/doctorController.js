@@ -1,4 +1,3 @@
-
 import prisma from "../lib/prisma.js";
 import bcrypt from "bcryptjs";
 
@@ -14,9 +13,37 @@ export async function createDoctor(req, res) {
       licenseNumber,
     } = req.body;
 
-    if (!firstName || !lastName || !email || !password) {
+    // Validate required fields
+    if (
+      typeof firstName !== "string" ||
+      typeof lastName !== "string" ||
+      typeof email !== "string" ||
+      typeof password !== "string" ||
+      !firstName.trim() ||
+      !lastName.trim() ||
+      !email.trim() ||
+      !password
+    ) {
       return res.status(400).json({
         message: "First name, last name, email and password are required",
+      });
+    }
+
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedSpecialization =
+      typeof specialization === "string"
+        ? specialization.trim() || null
+        : null;
+    const normalizedLicenseNumber =
+      typeof licenseNumber === "string"
+        ? licenseNumber.trim() || null
+        : null;
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: "Please provide a valid email address",
       });
     }
 
@@ -26,8 +53,11 @@ export async function createDoctor(req, res) {
       });
     }
 
+    // Check existing email
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: {
+        email: normalizedEmail,
+      },
     });
 
     if (existingUser) {
@@ -36,9 +66,12 @@ export async function createDoctor(req, res) {
       });
     }
 
-    if (licenseNumber) {
+    // Check existing license number
+    if (normalizedLicenseNumber) {
       const existingDoctor = await prisma.doctor.findUnique({
-        where: { licenseNumber },
+        where: {
+          licenseNumber: normalizedLicenseNumber,
+        },
       });
 
       if (existingDoctor) {
@@ -50,17 +83,18 @@ export async function createDoctor(req, res) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // Create user and doctor together
     const doctor = await prisma.user.create({
       data: {
-        firstName,
-        lastName,
-        email,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        email: normalizedEmail,
         passwordHash,
         role: "DOCTOR",
         doctor: {
           create: {
-            specialization,
-            licenseNumber,
+            specialization: normalizedSpecialization,
+            licenseNumber: normalizedLicenseNumber,
           },
         },
       },
@@ -80,6 +114,13 @@ export async function createDoctor(req, res) {
     });
   } catch (error) {
     console.error("Create doctor error:", error);
+
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        message: "Email or license number already exists",
+      });
+    }
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -117,6 +158,7 @@ export async function getAllDoctors(req, res) {
     });
   } catch (error) {
     console.error("Get doctors error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -154,9 +196,12 @@ export async function getDoctorById(req, res) {
       });
     }
 
-    return res.status(200).json({ doctor });
+    return res.status(200).json({
+      doctor,
+    });
   } catch (error) {
     console.error("Get doctor error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -194,53 +239,142 @@ export async function updateDoctor(req, res) {
       });
     }
 
-    if (email && email !== existingDoctor.user.email) {
-      const emailExists = await prisma.user.findUnique({
-        where: { email },
-      });
+    const userData = {};
+    const doctorData = {};
 
-      if (emailExists) {
-        return res.status(409).json({
-          message: "Email already exists",
+    // Validate and prepare first name
+    if (firstName !== undefined) {
+      if (typeof firstName !== "string" || !firstName.trim()) {
+        return res.status(400).json({
+          message: "First name cannot be empty",
         });
       }
+
+      userData.firstName = firstName.trim();
+    }
+
+    // Validate and prepare last name
+    if (lastName !== undefined) {
+      if (typeof lastName !== "string" || !lastName.trim()) {
+        return res.status(400).json({
+          message: "Last name cannot be empty",
+        });
+      }
+
+      userData.lastName = lastName.trim();
+    }
+
+    // Validate and prepare email
+    if (email !== undefined) {
+      if (typeof email !== "string" || !email.trim()) {
+        return res.status(400).json({
+          message: "Email cannot be empty",
+        });
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return res.status(400).json({
+          message: "Please provide a valid email address",
+        });
+      }
+
+      if (normalizedEmail !== existingDoctor.user.email) {
+        const emailExists = await prisma.user.findUnique({
+          where: {
+            email: normalizedEmail,
+          },
+        });
+
+        if (emailExists) {
+          return res.status(409).json({
+            message: "Email already exists",
+          });
+        }
+      }
+
+      userData.email = normalizedEmail;
+    }
+
+    // Validate and prepare specialization
+    if (specialization !== undefined) {
+      if (
+        specialization !== null &&
+        typeof specialization !== "string"
+      ) {
+        return res.status(400).json({
+          message: "Invalid specialization",
+        });
+      }
+
+      doctorData.specialization =
+        typeof specialization === "string"
+          ? specialization.trim() || null
+          : null;
+    }
+
+    // Validate and prepare license number
+    if (licenseNumber !== undefined) {
+      if (
+        licenseNumber !== null &&
+        typeof licenseNumber !== "string"
+      ) {
+        return res.status(400).json({
+          message: "Invalid license number",
+        });
+      }
+
+      const normalizedLicenseNumber =
+        typeof licenseNumber === "string"
+          ? licenseNumber.trim() || null
+          : null;
+
+      if (
+        normalizedLicenseNumber &&
+        normalizedLicenseNumber !== existingDoctor.licenseNumber
+      ) {
+        const licenseExists = await prisma.doctor.findUnique({
+          where: {
+            licenseNumber: normalizedLicenseNumber,
+          },
+        });
+
+        if (licenseExists) {
+          return res.status(409).json({
+            message: "License number already exists",
+          });
+        }
+      }
+
+      doctorData.licenseNumber = normalizedLicenseNumber;
     }
 
     if (
-      licenseNumber &&
-      licenseNumber !== existingDoctor.licenseNumber
+      Object.keys(userData).length === 0 &&
+      Object.keys(doctorData).length === 0
     ) {
-      const licenseExists = await prisma.doctor.findUnique({
-        where: { licenseNumber },
+      return res.status(400).json({
+        message: "No valid fields provided for update",
       });
-
-      if (licenseExists) {
-        return res.status(409).json({
-          message: "License number already exists",
-        });
-      }
     }
 
+    // Update user and doctor together
     const updatedDoctor = await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: {
-          id: existingDoctor.userId,
-        },
-        data: {
-          firstName,
-          lastName,
-          email,
-        },
-      });
+      if (Object.keys(userData).length > 0) {
+        await tx.user.update({
+          where: {
+            id: existingDoctor.userId,
+          },
+          data: userData,
+        });
+      }
 
       return tx.doctor.update({
         where: {
           id: doctorId,
         },
-        data: {
-          specialization,
-          licenseNumber,
-        },
+        data: doctorData,
         include: {
           user: {
             select: {
@@ -261,6 +395,13 @@ export async function updateDoctor(req, res) {
     });
   } catch (error) {
     console.error("Update doctor error:", error);
+
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        message: "Email or license number already exists",
+      });
+    }
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -301,6 +442,7 @@ export async function deactivateDoctor(req, res) {
     });
   } catch (error) {
     console.error("Deactivate doctor error:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });

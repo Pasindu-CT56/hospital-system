@@ -1,11 +1,48 @@
-
 import prisma from "../lib/prisma.js";
+
+// Validate UUID
+function isValidUUID(id) {
+  return (
+    typeof id === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      id
+    )
+  );
+}
+
+// Convert money value to cents
+function toCents(value) {
+  if (
+    (typeof value !== "string" && typeof value !== "number") ||
+    !String(value).trim()
+  ) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const [whole, decimal = ""] = normalized.split(".");
+  return Number(whole) * 100 + Number(decimal.padEnd(2, "0"));
+}
+
+// Convert cents to decimal string
+function fromCents(cents) {
+  return (cents / 100).toFixed(2);
+}
 
 // CREATE INVOICE
 export async function createInvoice(req, res) {
   try {
-    const { patientId, appointmentId, totalAmount, paidAmount = 0 } =
-      req.body;
+    const {
+      patientId,
+      appointmentId,
+      totalAmount,
+      paidAmount = 0,
+    } = req.body;
 
     if (!patientId || !appointmentId || totalAmount === undefined) {
       return res.status(400).json({
@@ -13,18 +50,24 @@ export async function createInvoice(req, res) {
       });
     }
 
-    const total = Number(totalAmount);
-    const paid = Number(paidAmount);
-
-    if (!Number.isFinite(total) || total <= 0) {
+    if (!isValidUUID(patientId) || !isValidUUID(appointmentId)) {
       return res.status(400).json({
-        message: "Total amount must be greater than zero",
+        message: "Invalid patient ID or appointment ID",
       });
     }
 
-    if (!Number.isFinite(paid) || paid < 0) {
+    const total = toCents(totalAmount);
+    const paid = toCents(paidAmount);
+
+    if (total === null || total <= 0) {
       return res.status(400).json({
-        message: "Paid amount cannot be negative or invalid",
+        message: "Total amount must be a valid amount greater than zero",
+      });
+    }
+
+    if (paid === null || paid < 0) {
+      return res.status(400).json({
+        message: "Paid amount must be a valid non-negative amount",
       });
     }
 
@@ -87,17 +130,16 @@ export async function createInvoice(req, res) {
       data: {
         patientId,
         appointmentId,
-        totalAmount: total.toFixed(2),
-        paidAmount: paid.toFixed(2),
+        totalAmount: fromCents(total),
+        paidAmount: fromCents(paid),
         status,
-        payments:
-          paid > 0
-            ? {
-                create: {
-                  amount: paid.toFixed(2),
-                },
-              }
-            : undefined,
+        ...(paid > 0 && {
+          payments: {
+            create: {
+              amount: fromCents(paid),
+            },
+          },
+        }),
       },
       include: {
         patient: true,
@@ -112,6 +154,12 @@ export async function createInvoice(req, res) {
     });
   } catch (error) {
     console.error("Create invoice error:", error);
+
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        message: "An invoice already exists for this appointment",
+      });
+    }
 
     return res.status(500).json({
       message: "Internal server error",
@@ -155,6 +203,12 @@ export async function getInvoiceById(req, res) {
   try {
     const { invoiceId } = req.params;
 
+    if (!isValidUUID(invoiceId)) {
+      return res.status(400).json({
+        message: "Invalid invoice ID",
+      });
+    }
+
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: {
@@ -188,6 +242,12 @@ export async function getInvoiceById(req, res) {
 export async function getInvoicesByPatient(req, res) {
   try {
     const { patientId } = req.params;
+
+    if (!isValidUUID(patientId)) {
+      return res.status(400).json({
+        message: "Invalid patient ID",
+      });
+    }
 
     const invoices = await prisma.invoice.findMany({
       where: { patientId },
@@ -224,72 +284,90 @@ export async function addInvoicePayment(req, res) {
     const { invoiceId } = req.params;
     const { amount } = req.body;
 
+    if (!isValidUUID(invoiceId)) {
+      return res.status(400).json({
+        message: "Invalid invoice ID",
+      });
+    }
+
     if (amount === undefined) {
       return res.status(400).json({
         message: "Payment amount is required",
       });
     }
 
-    const paymentAmount = Number(amount);
+    const paymentCents = toCents(amount);
 
-    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    if (paymentCents === null || paymentCents <= 0) {
       return res.status(400).json({
-        message: "Payment amount must be greater than zero",
+        message: "Payment amount must be a valid amount greater than zero",
       });
     }
 
-    const updatedInvoice = await prisma.$transaction(async (tx) => {
-      const invoice = await tx.invoice.findUnique({
-        where: { id: invoiceId },
-      });
+    const updatedInvoice = await prisma.$transaction(
+      async (tx) => {
+        const invoice = await tx.invoice.findUnique({
+          where: { id: invoiceId },
+        });
 
-      if (!invoice) {
-        const error = new Error("Invoice not found");
-        error.statusCode = 404;
-        throw error;
-      }
+        if (!invoice) {
+          const error = new Error("Invoice not found");
+          error.statusCode = 404;
+          throw error;
+        }
 
-      const total = Number(invoice.totalAmount);
-      const currentPaid = Number(invoice.paidAmount);
-      const newPaid = currentPaid + paymentAmount;
+        const total = toCents(invoice.totalAmount.toString());
+        const currentPaid = toCents(invoice.paidAmount.toString());
 
-      if (newPaid > total) {
-        const error = new Error(
-          "Payment exceeds the remaining invoice balance"
-        );
-        error.statusCode = 400;
-        throw error;
-      }
+        if (total === null || currentPaid === null) {
+          const error = new Error("Invalid invoice amount data");
+          error.statusCode = 500;
+          throw error;
+        }
 
-      const status =
-        newPaid === total
-          ? "PAID"
-          : "PARTIALLY_PAID";
+        const newPaid = currentPaid + paymentCents;
 
-      await tx.payment.create({
-        data: {
-          invoiceId,
-          amount: paymentAmount.toFixed(2),
-        },
-      });
+        if (newPaid > total) {
+          const error = new Error(
+            "Payment exceeds the remaining invoice balance"
+          );
+          error.statusCode = 400;
+          throw error;
+        }
 
-      return await tx.invoice.update({
-        where: { id: invoiceId },
-        data: {
-          paidAmount: newPaid.toFixed(2),
-          status,
-        },
-        include: {
-          patient: true,
-          appointment: true,
-          payments: {
-            orderBy: {
-              createdAt: "desc",
+        const status =
+          newPaid === total
+            ? "PAID"
+            : "PARTIALLY_PAID";
+
+        await tx.payment.create({
+          data: {
+            invoiceId,
+            amount: fromCents(paymentCents),
+          },
+        });
+
+        return await tx.invoice.update({
+          where: { id: invoiceId },
+          data: {
+            paidAmount: fromCents(newPaid),
+            status,
+          },
+          include: {
+            patient: true,
+            appointment: true,
+            payments: {
+              orderBy: {
+                createdAt: "desc",
+              },
             },
           },
-        },
-      });
-    });
+        });
+      },
+      {
+        isolationLevel: "Serializable",
+      }
+    );
 
     return res.status(200).json({
       message: "Payment added successfully",
@@ -297,6 +375,12 @@ export async function addInvoicePayment(req, res) {
     });
   } catch (error) {
     console.error("Add invoice payment error:", error);
+
+    if (error.code === "P2034") {
+      return res.status(409).json({
+        message: "Payment conflict. Please try again",
+      });
+    }
 
     return res.status(error.statusCode || 500).json({
       message: error.message || "Internal server error",
@@ -308,6 +392,12 @@ export async function addInvoicePayment(req, res) {
 export async function getInvoicePayments(req, res) {
   try {
     const { invoiceId } = req.params;
+
+    if (!isValidUUID(invoiceId)) {
+      return res.status(400).json({
+        message: "Invalid invoice ID",
+      });
+    }
 
     const invoice = await prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -326,12 +416,14 @@ export async function getInvoicePayments(req, res) {
       });
     }
 
+    const total = toCents(invoice.totalAmount.toString());
+    const paid = toCents(invoice.paidAmount.toString());
+
     return res.status(200).json({
       invoiceId: invoice.id,
       totalAmount: invoice.totalAmount,
       paidAmount: invoice.paidAmount,
-      remainingAmount:
-        Number(invoice.totalAmount) - Number(invoice.paidAmount),
+      remainingAmount: fromCents(total - paid),
       paymentCount: invoice.payments.length,
       payments: invoice.payments,
     });
